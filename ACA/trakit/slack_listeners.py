@@ -390,6 +390,26 @@ def send_reply(ack, body, logger, say, event):
 
 
 
+@app.action("no_updates")
+def no_updates(ack, body, logger, say, event):
+    ack()
+    suser = assertSuser(body["user"]["id"])
+    task = Task.objects.get(id=int(body["actions"][0]["value"]))
+    if task.project.members_pair.member1 == suser:
+        to = task.project.members_pair.member2
+    else:
+        to = task.project.members_pair.member1
+    print(to.id)
+    result = client.chat_postMessage(
+        channel=to.id,
+        text=f"Hey! <@{suser.id}> indicated that there are no updates for the trak: {task.name}"
+    )
+    logger.info(result)
+
+
+
+
+
 @app.action("request_update")
 def request_update(ack, body, logger, client, say, event):
     ack()
@@ -539,6 +559,10 @@ def handle_huddle_status(logger, event, say, ack):
     suser.inHuddle = event['user']['profile']['huddle_state'] == 'in_a_huddle'
     suser.save()
 
+    if not suser.inHuddle:
+        suser.sent = False
+        suser.save()
+
     if suser.inHuddle:
         pair = searchPair(suser)
         if not pair:
@@ -638,13 +662,25 @@ def handle_huddle_status(logger, event, say, ack):
 		            {
 		            	"type": "divider"
 	            	})
-
-            result = client.chat_postMessage(
-                channel=suser.id,
-                blocks=blocks,
-                text="We detected a new huddle!"
-            )
-            logger.info(result)
+            if not suser.sent:
+                result = client.chat_postMessage(
+                    channel=suser.id,
+                    blocks=blocks,
+                    text="We detected a new huddle!"
+                )
+                logger.info(result)
+                suser.sent = True
+                suser.save()
+            blocks[0]["text"]["text"] = f"It looks like you're in a huddle with <@{suser.id}>! Let me show you your traks:"
+            if not other.sent:
+                result = client.chat_postMessage(
+                    channel=other.id,
+                    blocks=blocks,
+                    text="We detected a new huddle!"
+                )
+                logger.info(result)
+                other.sent = True
+                other.save()
 
     ack()
 
